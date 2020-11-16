@@ -1,12 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using ZhawRpaChat.Controllers;
 
 namespace ZhawRpaChat
 {
@@ -26,7 +20,7 @@ namespace ZhawRpaChat
                     logging.AddAzureWebAppDiagnostics();
                 }).ConfigureWebHostDefaults(webBuilder =>
                 {
-                    webBuilder.UseStartup<Startup>();
+                    webBuilder.UseStartup<Startup>();                    
                 });
     }
 }

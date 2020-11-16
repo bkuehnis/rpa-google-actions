@@ -12,5 +12,6 @@
     <PackageReference Include="ServiceStack.ProtoBuf.Core" Version="5.9.2" />
     <PackageReference Include="protobuf-net.Core" Version="3.0.29" />
     <PackageReference Include="protobuf-net" Version="3.0.29" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Xml" Version="5.0.0" />
   </ItemGroup>
 </Project>
