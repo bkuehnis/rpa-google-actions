@@ -1,92 +1,48 @@
 ﻿using System;
 using System.Net.Http;
 using System.Text;
-using System.Configuration;
-using Microsoft.Extensions.Configuration.Xml;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-
+using System.Threading.Tasks;
 
 namespace ZhawRpaChat.Controllers
 {
     public class UiPathClient
     {
-
-
-
         private static readonly string URL_AUTH = "https://account.uipath.com/oauth/token";
-        //private static readonly string URL_RELEASES = "https://cloud.uipath.com/zhawmgygfxg/zhawDefault/odata/Releases?filter=ProcessKey='demo-rest-api-calls'";
-        //private static readonly string URL_START_JOB = "https://cloud.uipath.com/zhawmgygfxg/zhawDefault/odata/Jobs/UiPath.Server.Configuration.OData.StartJobs";
-
-
-        //private static readonly string TENANT_NAME = "zhawDefault";
-        //private static readonly string USER_KEY = "JrTNUWkYyr4XpF0oPzopEJRrTeumzKiFtX1pasnr5hypH";
-
-        //private static readonly int FODLER_ID = 646504;
-
+        
         public UiPathClient()
         {
         }
 
-        public string StartJob()
+        public async Task<string> StartJobAsync(string breed)
         {
-            var uiPathData = new UiPathAuthRequest();
-
-            //Oauth
-            var json = JsonConvert.SerializeObject(uiPathData);
-            Console.WriteLine(json);
-            var data = new StringContent(json, Encoding.UTF8, "application/json");
-
             using var client = new HttpClient();
             client.DefaultRequestHeaders.Add("X-UIPATH-TenantName", ApplicationSettings.TENANT_NAME);
-            var response = client.PostAsync(URL_AUTH, data).Result;
-            string jsonContent = response.Content.ReadAsStringAsync().Result;
 
-            if (!response.IsSuccessStatusCode)
-                return "OAuth not successful: " + response.ReasonPhrase;
+            UiPathAuthResponse uiPathAuthResponse = uiPathOauth(client);
 
-            UiPathAuthResponse uiPathAuthResponse = JsonConvert.DeserializeObject<UiPathAuthResponse>(jsonContent);
-
-            //get release key
             client.DefaultRequestHeaders.Add("Authorization", "Bearer " + uiPathAuthResponse.access_token);
-            var responseRelease = client.GetAsync(ApplicationSettings.URL_RELEASES).Result;
-            if (!responseRelease.IsSuccessStatusCode)
-                return "Release Get Request to find the key was not successful: " + responseRelease.ReasonPhrase;
-            string jsonContent2 = responseRelease.Content.ReadAsStringAsync().Result;
-            //"{\"@odata.context\":\"https://cloud.uipath.com/zhawmgygfxg/zhawDefault/odata/$metadata#Releases\",\"@odata.count\":1,\"value\":[{\"Key\":\"99520e1f-9a08-40a5-b4ab-009975c11dd6\",\"ProcessKey\":\"demo-rest-api-calls\",\"ProcessVersion\":\"1.0.6\",\"IsLatestVersion\":false,\"IsProcessDeleted\":false,\"Description\":\"Gets a random dog image from dog api and saves it to desktop\",\"Name\":\"demo-rest-api-calls_env_kuhs\",\"EnvironmentId\":131688,\"EnvironmentName\":\"env_kuhs\",\"InputArguments\":null,\"ProcessType\":\"Process\",\"SupportsMultipleEntryPoints\":true,\"RequiresUserInteraction\":true,\"AutoUpdate\":false,\"FeedId\":\"57f1b9d4-b6c3-4d18-be91-7320da97398d\",\"JobPriority\":\"Normal\",\"CreationTime\":\"2020-11-03T10:32:25.26Z\",\"OrganizationUnitId\":646504,\"OrganizationUnitFullyQualifiedName\":\"Default\",\"Id\":193359,\"Arguments\":{\"Input\":\"[{\\\"name\\\":\\\"in_TargetPath\\\",\\\"type\\\":\\\"System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b7…
-            JObject obj = JObject.Parse(jsonContent2);
-            var releaseKey = obj["value"].First["Key"].ToString();
 
+            var responseJobStarted = startUiPathJob(client, breed);
+
+            return await getDogBreedUriFromUiPathJob(client, responseJobStarted);
+
+        }
+
+        private HttpResponseMessage startUiPathJob(HttpClient client, string breed)
+        {
+            //get release key
             var jobStartData = new Root();
             jobStartData.startInfo = new StartInfo();
-            jobStartData.startInfo.ReleaseKey = releaseKey;
+            jobStartData.startInfo.ReleaseKey = getReleaseKey(client);
             jobStartData.startInfo.Strategy = "JobsCount";
             jobStartData.startInfo.JobsCount = 1;
             jobStartData.startInfo.Source = "Manual";
+            jobStartData.startInfo.InputArguments = (breed == "random") ? "{}" : "{'in_DogBreed':'" + breed.ToLower() + "'}";
 
             var jsonJobStartData = JsonConvert.SerializeObject(jobStartData);
-            Console.WriteLine(jsonJobStartData);
-            var ddata = JObject.Parse("{\"startInfo\":{ \"ReleaseKey\":\"99520e1f-9a08-40a5-b4ab-009975c11dd6\", \"Strategy\":\"JobsCount\", \"JobsCount\":1, \"Source\":\"Manual\"}}");
-            string payload = JsonConvert.SerializeObject(new
-            {
-                startInfo = new
-                {
-                    ReleaseKey = releaseKey,
-                    Strategy = "JobsCount",
-                    JobsCount = 1,
-                    Source = "Manual"
-
-                }
-            });
             var stringJsonJobStartData = new StringContent(jsonJobStartData, Encoding.UTF8, "application/json");
-
-
-            //using var client2 = new HttpClient();
-            //client2.DefaultRequestHeaders.Add("Authorization", "Bearer " + uiPathAuthResponse.access_token);
-            //client2.DefaultRequestHeaders.Add("X-UIPATH-TenantName", TENANT_NAME);
-            //client2.DefaultRequestHeaders.Add("X-UIPATH-OrganizationUnitId", FODLER_ID.ToString());
-            //client2.DefaultRequestHeaders.Add("Content-Type", "application/json");
-
 
             client.DefaultRequestHeaders.Add("X-UIPATH-OrganizationUnitId", ApplicationSettings.FOLDER_ID.ToString());
 
@@ -95,12 +51,72 @@ namespace ZhawRpaChat.Controllers
             {
                 var content = responseJobStarted.Content.ReadAsStringAsync().Result;
                 Console.WriteLine(content);
-                return "Job start request was not successful: " + responseJobStarted.ReasonPhrase;
+                throw new Exception("Job start request was not successful: " + responseJobStarted.ReasonPhrase);
             }
-                
+            return responseJobStarted;
+        }
 
-            return "Job request started";
+        private static async Task<string> getDogBreedUriFromUiPathJob(HttpClient client, HttpResponseMessage responseJobStarted)
+        {
+            string responseJons = responseJobStarted.Content.ReadAsStringAsync().Result;
+            dynamic jsonData = JObject.Parse(responseJons);
+            string id = jsonData["value"][0].Id;
+            string url = string.Format(ApplicationSettings.URL_JOB_BY_ID, id);
+            string state;
+            int maxTries = 0;
+            string htt = string.Empty;
+            do
+            {
+                await Task.Delay(100);
+                var responseJobStarted2 = client.GetAsync(url).Result;
+                if (!responseJobStarted2.IsSuccessStatusCode)
+                {
+                    var content = responseJobStarted2.Content.ReadAsStringAsync().Result;
+                    Console.WriteLine(content);
+                    return "Job start request was not successful: " + responseJobStarted.ReasonPhrase;
+                }
 
+                string responseJons2 = responseJobStarted2.Content.ReadAsStringAsync().Result;
+                dynamic jsonDataRe = JObject.Parse(responseJons2);
+                state = jsonDataRe.State;
+                if (state == "Successful")
+                {
+                    htt = jsonDataRe.OutputArguments;
+                    htt = htt.Replace("{\"out_DogUrl\":\"", "");
+                    htt = htt.Replace("\"}", "");
+                }
+                maxTries++;
+
+            } while (state != "Successful" || maxTries > 20);
+            return htt;
+        }
+
+        private string getReleaseKey(HttpClient client)
+        {
+            var responseRelease = client.GetAsync(ApplicationSettings.URL_RELEASES).Result;
+            if (!responseRelease.IsSuccessStatusCode)
+                throw new Exception("Release Get Request to find the key was not successful: " + responseRelease.ReasonPhrase);
+            string uiPathReleaseKeyJsonContent = responseRelease.Content.ReadAsStringAsync().Result;
+            JObject obj = JObject.Parse(uiPathReleaseKeyJsonContent);
+            return obj["value"].First["Key"].ToString();
+        }
+
+        private UiPathAuthResponse uiPathOauth(HttpClient client)
+        {
+            var uiPathData = new UiPathAuthRequest();
+
+            //Oauth
+            var json = JsonConvert.SerializeObject(uiPathData);
+            var data = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = client.PostAsync(URL_AUTH, data).Result;
+            string oauthJsonContentResult = response.Content.ReadAsStringAsync().Result;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception("OAuth not successful: " + response.ReasonPhrase);
+            }
+            return JsonConvert.DeserializeObject<UiPathAuthResponse>(oauthJsonContentResult);
         }
     }
 
@@ -123,12 +139,18 @@ namespace ZhawRpaChat.Controllers
         public string token_type { get; set; }
     }
 
+    class InputArgument
+    {
+        public string in_DogBreed { get; set; }
+    }
+
     class StartInfo
     {
         public string ReleaseKey { get; set; }
         public string Strategy { get; set; }
         public int JobsCount { get; set; }
         public string Source { get; set; }
+        public string InputArguments { get; set; }
     }
 
     class Root

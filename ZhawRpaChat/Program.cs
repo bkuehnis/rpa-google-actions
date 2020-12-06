@@ -15,8 +15,8 @@ namespace ZhawRpaChat
             Host.CreateDefaultBuilder(args)
                 .ConfigureLogging(logging =>
                 {
-                    //logging.ClearProviders();
-                    //logging.AddConsole();
+                    logging.ClearProviders();
+                    logging.AddConsole();
                     logging.AddAzureWebAppDiagnostics();
                 }).ConfigureWebHostDefaults(webBuilder =>
                 {
