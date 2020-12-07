@@ -4,6 +4,10 @@ using System.IO;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json.Linq;
+using System.Net.Http;
+using System;
+using System.Collections.Generic;
+using WikiDotNet;
 
 namespace ZhawRpaChat.Controllers
 {
@@ -38,7 +42,7 @@ namespace ZhawRpaChat.Controllers
             if (DEBUG)
             {
                 googleActionsRequestJson = "{\"handler\":{\"name\":\"yeswebhook\"},\"intent\":{\"name\":\"YES\",\"params\":{},\"query\":\"Yes\"},\"scene\":{\"name\":\"Start\",\"slotFillingStatus\":\"UNSPECIFIED\",\"slots\":{}},\"session\":{\"id\":\"ABwppHEzghcQHc-SpGx_I61zj6DqQVq-ROu_vP8W3PI3ez7H_niulAmHyjl7YRMiDCYfVKJdmOruXfo\",\"params\":{},\"typeOverrides\":[],\"languageCode\":\"\"},\"user\":{\"locale\":\"en-US\",\"params\":{},\"accountLinkingStatus\":\"ACCOUNT_LINKING_STATUS_UNSPECIFIED\",\"verificationStatus\":\"VERIFIED\",\"packageEntitlements\":[],\"lastSeenTime\":\"2020-10-02T15:40:35Z\"},\"home\":{\"params\":{}},\"device\":{\"capabilities\":[\"SPEECH\",\"RICH_RESPONSE\",\"LONG_FORM_AUDIO\"]}}";
-                googleActionsRequestJson = "{    \"handler\": {      \"name\": \"dogbreed\"    },    \"intent\": {      \"name\": \"DDogImage\",      \"params\": {        \"breed\": {          \"original\": \"boxer\",          \"resolved\": \"Boxer\"        }      },      \"query\": \"boxer\"    },    \"scene\": {      \"name\": \"Start\",      \"slotFillingStatus\": \"UNSPECIFIED\",      \"slots\": {},      \"next\": {        \"name\": \"Start\"      }    },    \"session\": {      \"id\": \"ABwppHFW0G0_9PTSjcaHJx__1Vxv_xzKNrUYbFqK2Chp73LLV8vkPRshXDTJB7RCQ5FeJg0toNetvSw\",      \"params\": {},      \"typeOverrides\": [],      \"languageCode\": \"\"    },    \"user\": {      \"locale\": \"en-US\",      \"params\": {},      \"accountLinkingStatus\": \"ACCOUNT_LINKING_STATUS_UNSPECIFIED\",      \"verificationStatus\": \"VERIFIED\",      \"packageEntitlements\": [],      \"gaiamint\": \"\",      \"lastSeenTime\": \"2020-12-05T23:56:18Z\"    },    \"home\": {      \"params\": {}    },    \"device\": {      \"capabilities\": [        \"SPEECH\",        \"RICH_RESPONSE\",        \"LONG_FORM_AUDIO\"      ]    }  }";
+                googleActionsRequestJson = "{    \"handler\": {      \"name\": \"Beschreibung\"    },    \"intent\": {      \"name\": \"DDogImage\",      \"params\": {        \"rasse1\": {          \"original\": \"boxer\",          \"resolved\": \"boxer\"        }      },      \"query\": \"boxer\"    },    \"scene\": {      \"name\": \"Start\",      \"slotFillingStatus\": \"UNSPECIFIED\",      \"slots\": {},      \"next\": {        \"name\": \"Start\"      }    },    \"session\": {      \"id\": \"ABwppHFW0G0_9PTSjcaHJx__1Vxv_xzKNrUYbFqK2Chp73LLV8vkPRshXDTJB7RCQ5FeJg0toNetvSw\",      \"params\": {},      \"typeOverrides\": [],      \"languageCode\": \"\"    },    \"user\": {      \"locale\": \"en-US\",      \"params\": {},      \"accountLinkingStatus\": \"ACCOUNT_LINKING_STATUS_UNSPECIFIED\",      \"verificationStatus\": \"VERIFIED\",      \"packageEntitlements\": [],      \"gaiamint\": \"\",      \"lastSeenTime\": \"2020-12-05T23:56:18Z\"    },    \"home\": {      \"params\": {}    },    \"device\": {      \"capabilities\": [        \"SPEECH\",        \"RICH_RESPONSE\",        \"LONG_FORM_AUDIO\"      ]    }  }";
             }
 
             _logger.LogInformation("____________________");
@@ -55,24 +59,72 @@ namespace ZhawRpaChat.Controllers
             string sessionId = data.session.id;
             _logger.LogInformation(sessionId);
 
-            string breed = data.intent["params"]["breed"]["resolved"];
-            string dogUri;
 
-            if (ApplicationSettings.CALL_UI_PATH)
+            string handlerName = data["handler"]["name"];
+            string breed = data.intent["params"]["rasse1"]["resolved"];
+
+            if (handlerName == "Beschreibung")
             {
-                // UI Path Aufruf
-                dogUri = await new UiPathClient().StartJobAsync(breed);
+                WikiSearchSettings searchSettings = new WikiSearchSettings
+                { RequestId = "Request ID", ResultLimit = 5, ResultOffset = 2, Language = "en" };
+
+                WikiSearchResponse response = WikiSearcher.Search(breed, searchSettings);
+
+                Console.WriteLine($"\nResults found ({breed}):\n");
+                string text = "No information found";
+                foreach (WikiSearchResult result in response.Query.SearchResults)
+                {
+                    if(result.WordCount > 0 && !result.Title.Contains("Talk"))
+                    {
+                        text = result.Preview;
+                        break;
+                    }
+                }
+                string jsonResponse = getSimpleResponseJson(sessionId, text);
+                return Content(jsonResponse, "application/json");
+            }
+            else
+            {
+               
+                string dogUri = "https://images.dog.ceo/breeds/terrier-wheaten/n02098105_50.jpg";
+
+                if (ApplicationSettings.CALL_UI_PATH)
+                {
+                    // UI Path Aufruf
+                    dogUri = await new UiPathClient().StartJobAsync(breed);
+                }
+                else
+                {                    
+                    dogUri = getDogUriFromDogCeo(breed);
+                }
+
+                //string responseString = getSimpleResponseJson(sessionId);
+                //responseString = getRichBasicCardResponse(sessionId, dogUri);
+                var responseString = getRichImageCardResponse(sessionId, dogUri, breed);
+
+                _logger.LogInformation("____________________");
+                _logger.LogInformation("response:");
+                _logger.LogInformation(responseString);
+
+                return Content(responseString, "application/json");
+            }
+        }
+
+        private string getDogUriFromDogCeo(string breed)
+        {
+            using var client = new HttpClient();
+            string url = "https://dog.ceo/api/breed/{0}/images/random";
+            var result = client.GetAsync(string.Format(url, breed.ToLower())).Result;
+            if (!result.IsSuccessStatusCode)
+            {
+                var content = result.Content.ReadAsStringAsync().Result;
+                Console.WriteLine(content);
+                return "Job start request was not successful: " + result.ReasonPhrase;
             }
 
-            //string responseString = getSimpleResponseJson(sessionId);
-            //responseString = getRichBasicCardResponse(sessionId, dogUri);
-            var responseString = getRichImageCardResponse(sessionId, dogUri, breed);
-
-            _logger.LogInformation("____________________");
-            _logger.LogInformation("response:");
-            _logger.LogInformation(responseString);
-
-            return Content(responseString, "application/json");
+            string jobStartedResult = result.Content.ReadAsStringAsync().Result;
+            dynamic jobStartedJson = JObject.Parse(jobStartedResult);            
+            return jobStartedJson.message;
         }
 
         // <summary>
@@ -142,7 +194,7 @@ namespace ZhawRpaChat.Controllers
                 "}";
         }
 
-        private static string getSimpleResponseJson(string sessionId)
+        private static string getSimpleResponseJson(string sessionId, string text)
         {
             return "{" +
                         "\"session\":{" +
@@ -152,14 +204,14 @@ namespace ZhawRpaChat.Controllers
                         "\"prompt\":{" +
                                         "\"override\":false," +
                                         "\"firstSimple\":{" +
-                                                            "\"speech\":\"This is a simple response\"," +
-                                                            "\"text\":\"\"" +
+                                                            "\"speech\":\""+text+"\"," +
+                                                            "\"text\":\"" + text + "\"" +
                                                         "}" +
                                     "}," +
                         "\"scene\": {" +
                                         "\"name\":\"SceneName\"," +
                                         "\"slots\":{}," +
-                                        "\"next\":{\"name\":\"actions.scene.END_CONVERSATION\"}" +
+                                        "\"next\":{}" +
                                     "}" +
                     "}";
         }

@@ -68,20 +68,20 @@ namespace ZhawRpaChat.Controllers
             do
             {
                 await Task.Delay(100);
-                var responseJobStarted2 = client.GetAsync(url).Result;
-                if (!responseJobStarted2.IsSuccessStatusCode)
+                var jobStatusResponse = client.GetAsync(url).Result;
+                if (!jobStatusResponse.IsSuccessStatusCode)
                 {
-                    var content = responseJobStarted2.Content.ReadAsStringAsync().Result;
+                    var content = jobStatusResponse.Content.ReadAsStringAsync().Result;
                     Console.WriteLine(content);
                     return "Job start request was not successful: " + responseJobStarted.ReasonPhrase;
                 }
 
-                string responseJons2 = responseJobStarted2.Content.ReadAsStringAsync().Result;
-                dynamic jsonDataRe = JObject.Parse(responseJons2);
-                state = jsonDataRe.State;
+                string jobStartedResult = jobStatusResponse.Content.ReadAsStringAsync().Result;
+                dynamic jobStartedJson = JObject.Parse(jobStartedResult);
+                state = jobStartedJson.State;
                 if (state == "Successful")
                 {
-                    htt = jsonDataRe.OutputArguments;
+                    htt = jobStartedJson.OutputArguments;
                     htt = htt.Replace("{\"out_DogUrl\":\"", "");
                     htt = htt.Replace("\"}", "");
                 }

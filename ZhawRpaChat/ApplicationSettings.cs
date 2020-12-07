@@ -2,7 +2,7 @@
 {
     public class ApplicationSettings
     {        
-        public const bool CALL_UI_PATH = true;
+        public const bool CALL_UI_PATH = false;
         public const string TENANT_NAME = "zhawDefault";
         public const int FOLDER_ID = 646504;
         public const string USER_KEY = "JrTNUWkYyr4XpF0oPzopEJRrTeumzKiFtX1pasnr5hypH";
